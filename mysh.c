@@ -38,6 +38,13 @@ int main(void) {
         if (args[0] == NULL) continue;
         if (strcmp(args[0], "exit") == 0) break;
 
+        /* 5b. Built-in "cd": must run in the parent, not a child */
+        if (strcmp(args[0], "cd") == 0) {
+            if (args[1] == NULL) args[1] = getenv("HOME");
+            if (chdir(args[1]) != 0) perror("cd");
+            continue;
+        }
+
         /* 6. Create a child process to run the command */
         pid_t pid = fork();
         if (pid < 0) {
