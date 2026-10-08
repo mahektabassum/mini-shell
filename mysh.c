@@ -38,6 +38,10 @@ int main(void) {
     char *args[MAX_ARGS];
 
     while (1) {
+        /* 0. Clean up any background jobs that have finished */
+        while (waitpid(-1, NULL, WNOHANG) > 0)
+            ;
+
         /* 1. Show the prompt */
         printf("mysh> ");
         fflush(stdout);
@@ -59,6 +63,13 @@ int main(void) {
             token = strtok(NULL, " \t");
         }
         args[i] = NULL;
+
+        /* 4b. A trailing "&" means: run in the background */
+        int background = 0;
+        if (i > 0 && strcmp(args[i - 1], "&") == 0) {
+            background = 1;
+            args[i - 1] = NULL;
+        }
 
         /* 5. Ignore empty input, handle the built-ins "exit" and "cd" */
         if (args[0] == NULL) continue;
@@ -132,6 +143,11 @@ int main(void) {
                     dup2(fds[1], STDOUT_FILENO);
                     close(fds[1]);
                 }
+                /* A background job must not steal keyboard input */
+                if (background && c == 0 && !infile[c]) {
+                    int fd = open("/dev/null", O_RDONLY);
+                    if (fd >= 0) { dup2(fd, STDIN_FILENO); close(fd); }
+                }
                 /* Files given with < or > win over the pipe */
                 if (infile[c]) {
                     int fd = open(infile[c], O_RDONLY);
@@ -162,9 +178,13 @@ int main(void) {
         }
         if (prev_read != -1) close(prev_read);
 
-        /* 9. Wait for all the children to finish */
-        for (int c = 0; c < started; c++) {
-            waitpid(pids[c], NULL, 0);
+        /* 9. Wait for the children, unless this is a background job */
+        if (background) {
+            if (started > 0) printf("[%d]\n", (int)pids[started - 1]);
+        } else {
+            for (int c = 0; c < started; c++) {
+                waitpid(pids[c], NULL, 0);
+            }
         }
     }
     return 0;
